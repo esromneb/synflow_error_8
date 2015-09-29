@@ -1,0 +1,91 @@
+/*
+ * Copyright (c) 2015 user
+ * All rights reserved.
+ */
+package com.x.x;
+
+network UDP_Mux {
+//	import com.synflow.net.Net_Constants.*;
+//	import com.synflow.net.ip.ComputeChecksumIP;
+
+	in bool oneStart;
+	in u8 oneDin(sync);
+
+	out bool udpDinStart;
+	out u8 udpDin(sync);
+	out u16 udpDinSrcPort;
+	out u16 udpDinDstPort;
+	out u32 udpDinSrcIp;
+	out u32 udpDinDstIp;
+	
+	in bool why;
+
+	muxx = new task {
+		in bool ramOneFull;
+		in sync ready u8 ramOneDin;
+		out bool dumpOne;
+		void loop() {
+			udpDinSrcIp.write(0);
+			udpDinDstIp.write(0);
+			udpDinSrcPort.write(333);
+			udpDinDstPort.write(1444);
+
+			udpDin.write(0);
+			udpDinStart.write(0);
+			if (ramOneFull.read()) {
+				dumpOne.write(1);
+				while (1) {
+					udpDinStart.write(1);
+					udpDin.write(ramOneDin.read());
+				}
+				udpDinStart.write(0);
+			}
+		}
+	};
+
+	ramOne = new std.mem.SinglePortRAM({ size: 2048, width: 8 });
+
+	ramOneManage = new task {
+		u10 i = 0;
+		u10 size = 0;
+
+		out bool ramOneFull;
+		in bool dumpOne;
+		out sync ready u8 ramOneDout;
+
+		void loop() {
+			i = 0;
+			size = 0;
+			ramOne.address.write(0);
+			ramOneFull.write(0);
+			while (!oneStart.read()) {
+			}
+
+			ramOne.data.write(oneDin.read());
+
+			while (oneDin.available()) {
+				ramOne.data.write(oneDin.read());
+				ramOne.address.write(i);
+				i++;
+			}
+
+			size = i;
+			i = 0;
+			ramOne.address.write(0);
+
+			ramOneFull.write(1);
+			while (!dumpOne.read()) {
+			}
+
+			while (i < size) {
+				ramOneFull.write(0);
+				ramOneDout.write(ramOne.q);
+				ramOne.address.write(i);
+				i++;
+			}
+		}
+	};
+
+	muxx.reads(ramOneManage.ramOneFull, ramOneManage.ramOneDout);
+	muxx.writes(ramOneManage.dumpOne);
+}
